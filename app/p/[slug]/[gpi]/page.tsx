@@ -1,57 +1,45 @@
+export const revalidate = 0;               // disable ISR
+export const dynamic = 'force-dynamic';    // opt out of static rendering
+
 import type { DrugEducation } from '@/lib/types';
 
 function toEmbedUrl(url?: string | null) {
   if (!url) return null;
-
   try {
     const u = new URL(url);
-
-    // YouTube long form: https://www.youtube.com/watch?v=VIDEO_ID
     if (u.hostname.includes('youtube.com') && u.pathname === '/watch' && u.searchParams.get('v')) {
-      const id = u.searchParams.get('v')!;
-      return `https://www.youtube.com/embed/${id}`;
+      return `https://www.youtube.com/embed/${u.searchParams.get('v')!}`;
     }
-
-    // YouTube short form: https://youtu.be/VIDEO_ID
     if (u.hostname === 'youtu.be') {
-      const id = u.pathname.replace('/', '');
-      return `https://www.youtube.com/embed/${id}`;
+      return `https://www.youtube.com/embed/${u.pathname.slice(1)}`;
     }
-
-    // Privacy-enhanced YouTube, keep path
-    if (u.hostname.includes('youtube.com') && u.pathname.startsWith('/embed/')) {
-      return u.toString();
-    }
-
-    // Vimeo page URL: https://vimeo.com/VIDEO_ID
     if (u.hostname.includes('vimeo.com') && /^\d+$/.test(u.pathname.slice(1))) {
-      const id = u.pathname.slice(1);
-      return `https://player.vimeo.com/video/${id}`;
+      return `https://player.vimeo.com/video/${u.pathname.slice(1)}`;
     }
-
-    // Direct file (mp4/webm) — let the page use <video>
     if (/\.(mp4|webm|ogg)$/i.test(u.pathname)) return u.toString();
-
-    // Unknown host — return as-is (may not embed)
     return u.toString();
   } catch {
-    return url;
+    return url ?? null;
   }
 }
 
-async function fetchEducation(slug: string, gpi: string): Promise<Pick<DrugEducation,'title'|'video_url'|'summary'> | null> {
+async function fetchEducation(
+  slug: string,
+  gpi: string
+): Promise<Pick<DrugEducation, 'title' | 'video_url' | 'summary'> | null> {
   const res = await fetch(
     `${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/public-education?slug=${encodeURIComponent(slug)}&gpi=${encodeURIComponent(gpi)}`,
-    { next: { revalidate: 60 } }
+    { cache: 'no-store' } // force fresh fetch
   );
   if (!res.ok) return null;
   return res.json();
 }
 
-// Next 16: params is a Promise — await it first
+// Next 16: params is a Promise
 export default async function PatientPage(props: { params: Promise<{ slug: string; gpi: string }> }) {
   const { slug, gpi } = await props.params;
   const edu = await fetchEducation(slug, gpi);
+
   if (!edu) {
     return (
       <main className="prose mx-auto max-w-2xl p-4">
@@ -113,3 +101,4 @@ export default async function PatientPage(props: { params: Promise<{ slug: strin
     </main>
   );
 }
+
